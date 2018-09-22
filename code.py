@@ -7,6 +7,12 @@
 # switchright to GND
 # consider makinga fritzing image or schematic...
 
+# Sept 06 2018
+# Added External Rotary Encoder and Button B
+# Added Serial Message variable and function
+# ... for sending to Touch Designer
+# NOTE! Using the Analog Pot will break TD data!!!
+
 
 # //// IMPORT THE SHIT
 import time
@@ -14,6 +20,8 @@ import board
 import neopixel
 from analogio import AnalogIn
 from digitalio import DigitalInOut, Direction, Pull
+
+import rotaryio
 
 
 # //// DECLARE VARIABLES AND FUNCTIONS
@@ -38,6 +46,52 @@ led.direction = Direction.OUTPUT
 
 volts = 3.3
 brights = 255 
+
+encoder = rotaryio.IncrementalEncoder(board.A6, board.A7)
+last_position = None
+
+button = DigitalInOut(board.BUTTON_B)
+button.direction = Direction.INPUT
+button.pull = Pull.DOWN
+button_state = None  # button.value
+
+# for formatting serial messages
+serialmessage_button = None
+serialmessage_rotary = None
+
+def serialUpdate():
+	print(serialmessage_button, "/", serialmessage_rotary)
+
+def rotary():
+	global last_position
+	global serialmessage_rotary
+
+	position = encoder.position
+	if last_position is None or position != last_position:
+		# print("Encoder:", position)
+		serialmessage_rotary = "Encoder: %d" % position
+		serialUpdate()
+	last_position = position
+
+def buttonPress():
+	global button_state
+	global serialmessage_button
+	pressed = button.value
+
+	if button_state is None or pressed != button_state:
+		if pressed:
+			serialmessage_button = "Button: 1"
+			# print(serialmessage_button)			
+			# serialUpdate()
+		else:
+			serialmessage_button = "Button: 0"
+			# print(serialmessage_button)
+			# serialUpdate()
+		serialUpdate()
+	button_state = pressed
+
+	# return not button.value
+
 
 def switched():  # inverts PullUP switch to normalize value
 	return not switch.value
@@ -86,6 +140,8 @@ print("CPX Initialized \n ... \n ... \n ... \n")
 # //// DO THE STUFF
 while True:
 
+	rotary()
+	buttonPress()
 
 	# sets RGB tuple for neopix to analog brightness value
 	pixfill = (int(getBright(analogin)), int(getBright(analogin)), int(getBright(analogin)))
