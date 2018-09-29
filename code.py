@@ -1,17 +1,5 @@
-# This code is for one single switch pot to be connected...
-# if 3 prongs are facing LEFT side of pot...
-# pot top to GND
-# pot center to A1
-# pot bottom to 3.3v
-# switchleft to A2
-# switchright to GND
-# consider makinga fritzing image or schematic...
-
-# Sept 06 2018
-# Added External Rotary Encoder and Button B
-# Added Serial Message variable and function
-# ... for sending to Touch Designer
-# NOTE! Using the Analog Pot will break TD data!!!
+# Code for REAP Interface (Rotary Encoder Analog Potentiometer) 
+# on the CPX for TouchDesigner
 
 
 # //// IMPORT THE SHIT
@@ -20,11 +8,41 @@ import board
 import neopixel
 from analogio import AnalogIn
 from digitalio import DigitalInOut, Direction, Pull
-
 import rotaryio
 
 
-# //// DECLARE VARIABLES AND FUNCTIONS
+
+
+# //// SETUP THE BOARD
+# external analog potentiometer
+analogin = AnalogIn(board.A1)
+
+# switch on the external potentiometer
+switch = DigitalInOut(board.A2)
+switch.direction = Direction.INPUT
+switch.pull = Pull.UP
+
+# external rotary encoder
+encoder = rotaryio.IncrementalEncoder(board.A6, board.A7)
+
+# on board button
+button = DigitalInOut(board.BUTTON_B)
+button.direction = Direction.INPUT
+button.pull = Pull.DOWN
+
+# on board LED
+led = DigitalInOut(board.D13)
+led.direction = Direction.OUTPUT
+
+# on board neopixels
+# neopixel.NeoPixel(pin, number, brightness, display)
+pixels = neopixel.NeoPixel(board.NEOPIXEL, 10, brightness=0)
+
+
+
+
+# //// DECLARE CONSTANTS
+# color constants
 WHITE = (255, 255, 255)
 RED = 0x100000  # (0x10, 0, 0) also works
 YELLOW = (0x10, 0x10, 0)
@@ -34,160 +52,177 @@ BLUE = (0, 0, 0x10)
 PURPLE = (0x10, 0, 0x10)
 BLACK = (0, 0, 0)
 
-analogin = AnalogIn(board.A1)
-
-switch = DigitalInOut(board.A2)
-switch.direction = Direction.INPUT
-switch.pull = Pull.UP
-switch_state = not switch.value
-
-led = DigitalInOut(board.D13)
-led.direction = Direction.OUTPUT
-
+# for analog helper
 volts = 3.3
-brights = 255 
+brightness_helper_value = 255 
 
-encoder = rotaryio.IncrementalEncoder(board.A6, board.A7)
-last_position = None
 
-button = DigitalInOut(board.BUTTON_B)
-button.direction = Direction.INPUT
-button.pull = Pull.DOWN
-button_state = None  # button.value
 
-# for formatting serial messages
-serialmessage_button = None
-serialmessage_rotary = None
 
-def serialUpdate():
-	print(serialmessage_button, "/", serialmessage_rotary)
+# //// PURE FUNCTIONS
+# helpers for getting usable values from the analoginput
+def getValue(pin):  # helper to normalizes a 0-1 float from analog input
+	#
+	return (pin.value) / 65536
 
-def rotary():
-	global last_position
-	global serialmessage_rotary
+def getVoltage(pin):  # helper to get a voltage reading from analog input
+	#
+	return (pin.value * volts) / 65536
 
-	position = encoder.position
-	if last_position is None or position != last_position:
-		# print("Encoder:", position)
-		serialmessage_rotary = "Encoder: %d" % position
-		serialUpdate()
-	last_position = position
+def getBright(pin):  # helper to set RGB value from analog input
+	#
+	return (pin.value) * brightness_helper_value / 65536
 
-def buttonPress():
+''' ''' 
+def switchIsOn():  # inverts PullUP switch to return actual intuitive reading
+	#
+	return not switch.value
+
+
+
+
+# //// COMMAND / OTHER FUNCTIONS
+def doSerialUpdate():  # prints serial messages to console / for output
+	# print(serial_message_button, "/", serial_message_encoder)
+	# print(serial_message_analog, "/", serial_message_switch)
+	print(
+		"Button: %d" % serial_message_button,
+		"/", 
+		"Encoder: %d" % serial_message_encoder,
+		"/",
+		"Analog: %f" % serial_message_analog,
+		"/", 
+		"Switch: %d" % serial_message_switch
+		)
+
+''' ''' 
+def encoderHasChanged():  # updates the encoder position value (and value for serial message)
+	global last_encoded_position
+	global serial_message_encoder
+
+	global encoder_has_changed
+	current_encoded_position = encoder.position
+
+	if last_encoded_position is None or current_encoded_position != last_encoded_position:
+		encoder_has_changed = True
+		serial_message_encoder = current_encoded_position
+		# doSerialUpdate()
+	else:
+		encoder_has_changed = False
+
+	last_encoded_position = current_encoded_position
+
+def buttonHasChanged():  # updates the button state (and value for serial message)
 	global button_state
-	global serialmessage_button
+	global serial_message_button
+
+	global button_has_changed
 	pressed = button.value
 
 	if button_state is None or pressed != button_state:
+		button_has_changed = True
+		# doSerialUpdate()  # the above variable means this can be moved to the main loop
+
 		if pressed:
-			serialmessage_button = "Button: 1"
-			# print(serialmessage_button)			
-			# serialUpdate()
+			serial_message_button = 1
 		else:
-			serialmessage_button = "Button: 0"
-			# print(serialmessage_button)
-			# serialUpdate()
-		serialUpdate()
+			serial_message_button = 0
+	else:
+		button_has_changed = False
 	button_state = pressed
 
+	# return button_has_changed
 	# return not button.value
 
-
-def switched():  # inverts PullUP switch to normalize value
-	return not switch.value
-	# fold function 
-
-def switchCheck():  # switch state
+def switchHasChanged():  # checks if the switch has changed
+	'''
+	unfortunately this doesnt really give me the results I'm after...
+	'''
 	global switch_state
-	if switched() is not switch_state:
-		# print("switchstate changed 01")
-		if switched():
+	global serial_message_switch
+
+	if switchIsOn() is not switch_state:
+		if switchIsOn():
 			val = "ON"
-			print("\n switched /", val, "\n")  # \n is newline
+			sval = 1
 		else: 
 			val = "OFF"
-			print("\n switched /", val, "\n")
-		switch_state = switched()
+			sval = 0
 
-# // dont really know what to make of the switchCheck above...
-# // like I dont know how to put it to good use down in the main loop...
-# def switchPulse():  # return a boolean pulse when switched
-# 	# time.sleep(1)  # with this line, the switch pulse actually registers in the console
-# 	if switched() is not switch_state:
-# 		return True
-# 	else:
-# 		return False
+		serial_message_switch = ("Switch: %d" % sval)
+		print("\n switchIsOn /", val, "\n")
+
+		switch_state = switchIsOn()
 
 
-def getVoltage(pin):  # helper to get a voltage reading
-	return (pin.value * volts) / 65536
-	# fold function
 
-def getValue(pin):  # normalizes a 0-1 float
-	return (pin.value) / 65536
-	# fold function
 
-def getBright(pin):  # for fading the neopixels color value instead of bright
-	return (pin.value) * brights / 65536
-	# fold function
+# //// VARIABLES
+# old variables initially setup with the board, now unsure of names and placement
+last_encoded_position = None  # MOVE ME
+button_state = None  # button.value - MOVE ME
+switch_state = None  # not switch.value  # MOVE ME
 
-# neopixel.NeoPixel(pin, number, brightness, display)
-# id found the arguments here confusing, but I'm starting to see it... as above
-pixels = neopixel.NeoPixel(board.NEOPIXEL, 10, brightness=getValue(analogin))
-pixels.fill(WHITE)
+# new variables
+current_switch_state = switchIsOn()
+button_has_changed = None
+encoder_has_changed = None
 
-print("CPX Initialized \n ... \n ... \n ... \n")
-# //// DO THE STUFF
+# for formatting serial messages
+serial_message_encoder = None
+serial_message_button = button.value
+serial_message_analog = 0
+serial_message_switch = switchIsOn()
+
+
+
+
+# //// INITIAL UPDATES
+pixels.fill(WHITE)  # set neopixels white 
+print("\n CPX Initialized \n ... \n ... \n ...")  # initial formatting message
+
+
+
+
+# //// MAIN LOOP
 while True:
 
-	rotary()
-	buttonPress()
-
-	# sets RGB tuple for neopix to analog brightness value
-	pixfill = (int(getBright(analogin)), int(getBright(analogin)), int(getBright(analogin)))
-	# print('pixfill:', pixfill)
-
-	switchCheck()
-	# print("switchPULSE :", switchPulse())
-
-	if switched():
-		# print("switch ON")
-		# print("Full Value: %f" % getValue(analogin))  # Prints full analog range
+	# INITIAL SETUP
+	# sets up state tracking for the analog pot switch
+	old_switch_state = current_switch_state
+	current_switch_state = switchIsOn()
+	switch_state_has_changed = current_switch_state != old_switch_state
 
 
-		# // each of the following methods have their faults
-		# no nice way to get a real smooth fade towards dark values
+	# COMMANDS 
+	if switch_state_has_changed:
+		led.value = switchIsOn()
 
-		# 01 Adjusting Brightness
-		pixels.brightness = getValue(analogin) 
-			# theres a hard cutoff towards the lower values here.
+		if switchIsOn():
+			serial_message_switch = 1
 
-		# 02 Adjusting COLOR value using fill 
-		# pixels.brightness = 1
-		# pixels.fill(pixfill)
-		# print("pixel value:", pixels[0])
-			# color flickering towards lower ends
-			# dont forget to set brightness, cause fill alone doesnt cut it!
+		elif not switchIsOn():
+			serial_message_analog = 0
+			serial_message_switch = 0
+			doSerialUpdate()			
 
-		# 03 Adjusting COLOR value using a loop over all pixels
-		# for i in range(len(pixels)):
-		# 	pixels[i] = pixfill
-			# runs terribly slow
-			# only did this because I thought the above wasnt working
+	if button_has_changed:  
+		doSerialUpdate()
 
-		if pixels.brightness < 0.998:
-			print("Value: %f" % getValue(analogin))
-			# print()
-		else:
-			print("FULL BRIGHTNESS!!!")
-	else: 
-		# print("switch OFF")
-		# print("Analog Voltage: %f" % getVoltage(analogin))
-		pass
+	if encoder_has_changed:
+		doSerialUpdate()
 
-	led.value = switched()
-	# led.value = getValue(analogin)  
-		# fade RED LED based on value...
-		# this needs to be PWM to work... DigitalIO is only binary!!!
+
+	# CONTINUOUS UPDATES
+	encoderHasChanged()
+	buttonHasChanged()
+	# switchHasChanged()
+
+	if switchIsOn():
+		analog_value = getValue(analogin)
+		serial_message_analog = analog_value
+
+		pixels.brightness = analog_value  # set the CPX pixels brightness
+		doSerialUpdate()
 
 	time.sleep(0.05)

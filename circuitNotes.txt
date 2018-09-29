@@ -1,0 +1,15 @@
+# This code is for one single switch pot to be connected...
+# if 3 prongs are facing LEFT side of pot...
+# pot top to GND
+# pot center to A1
+# pot bottom to 3.3v
+# switchleft to A2
+# switchright to GND
+# consider makinga fritzing image or schematic...
+
+A rotary encoder is also used
+middle to GND
+outer pins connect to A6 - A7
+note:
+	the order of the surrounding pins 
+	will reverse positive/negative values
